@@ -8,13 +8,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 
+from app.core.config import settings
 from app.api import conversations, search
 
 app = FastAPI(title="ChatArchive API")
 
+origins = [o.strip() for o in settings.CORS_ORIGINS.split(",") if o.strip()]
+if "*" in origins:
+    origins = ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],  # Vue's default Vite dev server port
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

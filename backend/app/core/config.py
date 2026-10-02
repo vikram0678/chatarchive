@@ -16,6 +16,10 @@ class Settings(BaseSettings):
 
     # Vector DB
     QDRANT_URL: str = "http://qdrant:6333"
+    QDRANT_API_KEY: str | None = None
+
+    # CORS
+    CORS_ORIGINS: str = "*"
 
     # App
     PROJECT_NAME: str = "ChatArchive"

@@ -15,7 +15,7 @@ VECTOR_SIZE = 384  # output size of all-MiniLM-L6-v2
 
 # Loaded once at import time — expensive to reload per task
 _embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-_qdrant_client = QdrantClient(url=settings.QDRANT_URL)
+_qdrant_client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY)
 
 
 def _ensure_collection_exists():

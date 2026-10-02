@@ -1,0 +1,119 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint-and-test-frontend:
+    name: Frontend Build and Validation
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./frontend
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js Runtime
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ./frontend/package-lock.json
+
+      - name: Install Frontend Dependencies
+        run: npm ci
+
+      - name: Build Frontend Application
+        run: npm run build
+
+  lint-and-test-backend:
+    name: Backend Validation and Linting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./backend
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python Runtime
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ./backend/requirements.txt
+
+      - name: Install Static Analysis Tools
+        run: pip install flake8
+
+      - name: Execute Python Syntax and Code Style Checks
+        run: |
+          # Stop build on syntax errors or undefined names
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+          # Exit-zero treats all warnings as warnings for style consistency
+          flake8 . --count --exit-zero --max-complexity=15 --max-line-length=120 --statistics
+
+  deploy:
+    name: Deploy to Production VM
+    needs: [lint-and-test-frontend, lint-and-test-backend]
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+
+      - name: Execute Remote Deployment via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          passphrase: ${{ secrets.SSH_PASSPHRASE }}
+          port: ${{ secrets.SERVER_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+
+            DEPLOY_DIR="${{ secrets.PROJECT_PATH || '/home/ubuntu/chatarchive' }}"
+            echo "Navigating to deployment directory: ${DEPLOY_DIR}"
+            
+            if [ ! -d "$DEPLOY_DIR" ]; then
+              echo "Error: Directory ${DEPLOY_DIR} does not exist."
+              exit 1
+            fi
+
+            cd "$DEPLOY_DIR"
+
+            echo "Synchronizing repository with origin/main..."
+            git fetch --all --prune
+            git reset --hard origin/main
+
+            echo "Ensuring environment file configuration..."
+            if [ ! -f ".env" ] && [ -f ".env.example" ]; then
+              cp .env.example .env
+              echo "Created .env from .env.example"
+            fi
+
+            echo "Building and launching containers..."
+            docker compose pull --ignore-pull-failures || true
+            docker compose up -d --build --remove-orphans
+
+            echo "Pruning dangling Docker images to maintain disk space..."
+            docker image prune -f
+
+            echo "Verifying running container statuses..."
+            docker compose ps
