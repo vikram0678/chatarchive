@@ -4,16 +4,12 @@ Kept separate from nlp_service.py since this handles vectors,
 not text-analysis insights.
 """
 
-from sentence_transformers import SentenceTransformer
-from qdrant_client import QdrantClient
-from qdrant_client.models import VectorParams, Distance, PointStruct
-
 from app.core.config import settings
 
 COLLECTION_NAME = "conversations"
 VECTOR_SIZE = 384  # output size of all-MiniLM-L6-v2
 
-# Lazy loaded on first request to minimize startup memory overhead
+# Lazy loaded on first request to allow instantaneous server startup
 _embedding_model = None
 _qdrant_client = None
 
@@ -21,6 +17,7 @@ _qdrant_client = None
 def _get_qdrant_client():
     global _qdrant_client
     if _qdrant_client is None:
+        from qdrant_client import QdrantClient
         _qdrant_client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY)
     return _qdrant_client
 
@@ -30,6 +27,7 @@ def _get_embedding_model():
     if _embedding_model is None:
         import torch
         torch.set_num_threads(1)
+        from sentence_transformers import SentenceTransformer
         _embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
     return _embedding_model
 
@@ -37,6 +35,8 @@ def _get_embedding_model():
 def _ensure_collection_exists():
     """Creates the Qdrant collection on first use, if it doesn't already exist."""
     client = _get_qdrant_client()
+    from qdrant_client.models import VectorParams, Distance
+
     existing = [c.name for c in client.get_collections().collections]
     if COLLECTION_NAME not in existing:
         client.create_collection(
@@ -57,6 +57,7 @@ def store_embedding(conversation_id: str, text: str):
     _ensure_collection_exists()
     vector = generate_embedding(text)
     client = _get_qdrant_client()
+    from qdrant_client.models import PointStruct
 
     client.upsert(
         collection_name=COLLECTION_NAME,

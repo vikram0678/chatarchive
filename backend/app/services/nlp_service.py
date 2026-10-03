@@ -12,10 +12,7 @@ Implements 4 required NLP features:
 import re
 from collections import Counter
 
-import spacy
-from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
-
-# Lazy loaded on first request to minimize startup memory footprint
+# Lazy loaded on first request to allow instantaneous server startup
 _nlp = None
 _sentiment_analyzer = None
 
@@ -23,6 +20,7 @@ _sentiment_analyzer = None
 def _get_nlp():
     global _nlp
     if _nlp is None:
+        import spacy
         _nlp = spacy.load("en_core_web_sm")
     return _nlp
 
@@ -30,6 +28,7 @@ def _get_nlp():
 def _get_sentiment_analyzer():
     global _sentiment_analyzer
     if _sentiment_analyzer is None:
+        from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
         _sentiment_analyzer = SentimentIntensityAnalyzer()
     return _sentiment_analyzer
 
