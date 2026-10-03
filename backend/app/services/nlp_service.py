@@ -15,14 +15,29 @@ from collections import Counter
 import spacy
 from vaderSentiment.vaderSentiment import SentimentIntensityAnalyzer
 
-# Load models once at import time (not per-task) — expensive to reload every call
-_nlp = spacy.load("en_core_web_sm")
-_sentiment_analyzer = SentimentIntensityAnalyzer()
+# Lazy loaded on first request to minimize startup memory footprint
+_nlp = None
+_sentiment_analyzer = None
+
+
+def _get_nlp():
+    global _nlp
+    if _nlp is None:
+        _nlp = spacy.load("en_core_web_sm")
+    return _nlp
+
+
+def _get_sentiment_analyzer():
+    global _sentiment_analyzer
+    if _sentiment_analyzer is None:
+        _sentiment_analyzer = SentimentIntensityAnalyzer()
+    return _sentiment_analyzer
 
 
 def analyze_sentiment(text: str) -> str:
     """Returns 'Positive', 'Negative', or 'Neutral' using VADER's compound score."""
-    scores = _sentiment_analyzer.polarity_scores(text)
+    analyzer = _get_sentiment_analyzer()
+    scores = analyzer.polarity_scores(text)
     compound = scores["compound"]
 
     if compound >= 0.05:
@@ -34,7 +49,8 @@ def analyze_sentiment(text: str) -> str:
 
 def extract_entities(text: str) -> list[str]:
     """Extracts Organizations, Persons, and Products mentioned in the text."""
-    doc = _nlp(text)
+    nlp = _get_nlp()
+    doc = nlp(text)
     relevant_labels = {"ORG", "PERSON", "PRODUCT"}
 
     entities = [ent.text for ent in doc.ents if ent.label_ in relevant_labels]
@@ -51,7 +67,8 @@ def extract_entities(text: str) -> list[str]:
 
 def extract_key_phrases(text: str, top_n: int = 5) -> list[str]:
     """Extracts the most frequent meaningful noun phrases (3-5 key phrases)."""
-    doc = _nlp(text)
+    nlp = _get_nlp()
+    doc = nlp(text)
 
     phrases = [
         chunk.text.strip().lower()
@@ -72,7 +89,8 @@ def generate_summary(text: str, max_sentences: int = 3) -> str:
     and picks the top N highest-scoring sentences, in original order.
     No heavy transformer model required.
     """
-    doc = _nlp(text)
+    nlp = _get_nlp()
+    doc = nlp(text)
     sentences = [sent.text.strip() for sent in doc.sents if sent.text.strip()]
 
     if len(sentences) <= max_sentences:

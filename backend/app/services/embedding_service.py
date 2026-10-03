@@ -13,16 +13,33 @@ from app.core.config import settings
 COLLECTION_NAME = "conversations"
 VECTOR_SIZE = 384  # output size of all-MiniLM-L6-v2
 
-# Loaded once at import time — expensive to reload per task
-_embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
-_qdrant_client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY)
+# Lazy loaded on first request to minimize startup memory overhead
+_embedding_model = None
+_qdrant_client = None
+
+
+def _get_qdrant_client():
+    global _qdrant_client
+    if _qdrant_client is None:
+        _qdrant_client = QdrantClient(url=settings.QDRANT_URL, api_key=settings.QDRANT_API_KEY)
+    return _qdrant_client
+
+
+def _get_embedding_model():
+    global _embedding_model
+    if _embedding_model is None:
+        import torch
+        torch.set_num_threads(1)
+        _embedding_model = SentenceTransformer("sentence-transformers/all-MiniLM-L6-v2")
+    return _embedding_model
 
 
 def _ensure_collection_exists():
     """Creates the Qdrant collection on first use, if it doesn't already exist."""
-    existing = [c.name for c in _qdrant_client.get_collections().collections]
+    client = _get_qdrant_client()
+    existing = [c.name for c in client.get_collections().collections]
     if COLLECTION_NAME not in existing:
-        _qdrant_client.create_collection(
+        client.create_collection(
             collection_name=COLLECTION_NAME,
             vectors_config=VectorParams(size=VECTOR_SIZE, distance=Distance.COSINE),
         )
@@ -30,7 +47,8 @@ def _ensure_collection_exists():
 
 def generate_embedding(text: str) -> list[float]:
     """Converts text into a 384-dimension vector."""
-    vector = _embedding_model.encode(text)
+    model = _get_embedding_model()
+    vector = model.encode(text)
     return vector.tolist()
 
 
@@ -38,8 +56,9 @@ def store_embedding(conversation_id: str, text: str):
     """Generates and stores an embedding in Qdrant, tagged with conversation_id."""
     _ensure_collection_exists()
     vector = generate_embedding(text)
+    client = _get_qdrant_client()
 
-    _qdrant_client.upsert(
+    client.upsert(
         collection_name=COLLECTION_NAME,
         points=[
             PointStruct(
@@ -58,8 +77,9 @@ def search_similar(query: str, top_k: int = 5) -> list[dict]:
     """
     _ensure_collection_exists()
     query_vector = generate_embedding(query)
+    client = _get_qdrant_client()
 
-    results = _qdrant_client.search(
+    results = client.search(
         collection_name=COLLECTION_NAME,
         query_vector=query_vector,
         limit=top_k,
