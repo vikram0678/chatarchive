@@ -4,6 +4,7 @@ This is the entry point Celery uses to know how to connect to Redis
 and which task modules to load.
 """
 
+import ssl
 from celery import Celery
 
 from app.core.config import settings
@@ -20,3 +21,14 @@ celery_app.conf.update(
     result_serializer="json",
     accept_content=["json"],
 )
+
+# Enable TLS/SSL when connecting to cloud Redis providers (e.g. Upstash rediss://)
+if settings.CELERY_BROKER_URL.startswith("rediss://"):
+    celery_app.conf.update(
+        broker_use_ssl={
+            "ssl_cert_reqs": ssl.CERT_NONE,
+        },
+        redis_backend_use_ssl={
+            "ssl_cert_reqs": ssl.CERT_NONE,
+        },
+    )
